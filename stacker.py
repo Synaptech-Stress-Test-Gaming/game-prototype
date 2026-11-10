@@ -11,6 +11,7 @@ Requires: pygame, pymunk   (py -m pip install pygame pymunk)
 """
 
 import math
+import os
 import random
 import sys
 
@@ -310,9 +311,20 @@ class Game:
             self.drop()
 
 
-def main():
+def open_window():
+    """Borderless desktop-sized window ("fake fullscreen").
+
+    pygame.FULLSCREEN switches the monitor's display mode, which on Windows with
+    display scaling resizes and rearranges every other application's windows.
+    A borderless window covering the desktop looks the same without that.
+    """
+    os.environ["SDL_VIDEO_WINDOW_POS"] = "0,0"
     pygame.init()
-    screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+    return pygame.display.set_mode(pygame.display.get_desktop_sizes()[0], pygame.NOFRAME)
+
+
+def main():
+    screen = open_window()
     pygame.display.set_caption("Animal Stacker")
     clock = pygame.time.Clock()
     game = Game(screen)
