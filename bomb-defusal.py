@@ -23,12 +23,10 @@ import math
 import os
 import random
 import sys
-
 import pygame
-
 # --- Tunables -----------------------------------------------------------------
 FPS = 120
-TIME_LIMIT_MS = 240_000         # countdown length
+TIME_LIMIT_MS = 300_000         # countdown length
 PENALTY_MS = 5_000              # time lost per mistake in modules that punish them
 WIN_SCREEN_DELAY_MS = 2_000     # green timer shows this long before the congrats screen
 WIN_ZOOM_OUT_MS = 900           # camera eases back to the whole bomb at the start of that wait
@@ -100,6 +98,20 @@ def draw_module_frame(surface, rect, fonts, title, solved):
     if title:
         img = fonts["main"].render(title, True, DIM)
         surface.blit(img, img.get_rect(midtop=(rect.centerx, rect.top + 14 * s)))
+
+
+def draw_arrow(surface, center, size, direction, color):
+    """Small shaft-and-head arrow pointing up / down / left / right."""
+    dx, dy = {"up": (0, -1), "down": (0, 1), "left": (-1, 0), "right": (1, 0)}[direction]
+    cx, cy = center
+    h = size / 2
+    tip = (cx + dx * h, cy + dy * h)
+    tail = (cx - dx * h, cy - dy * h)
+    pygame.draw.line(surface, color, tail, (cx + dx * h * 0.2, cy + dy * h * 0.2), max(1, int(size / 7)))
+    side = (-dy * h * 0.55, dx * h * 0.55)
+    back = (cx + dx * h * 0.05, cy + dy * h * 0.05)
+    pygame.draw.polygon(surface, color, [tip, (back[0] + side[0], back[1] + side[1]),
+                                         (back[0] - side[0], back[1] - side[1])])
 
 
 def reset_button_rect(rect):
@@ -186,6 +198,10 @@ WIRE_COLORS = {
     "blue": (60, 115, 235),
     "green": (55, 175, 90),
     "yellow": (235, 200, 55),
+    "orange": (249, 150, 21),
+    "purple": (197, 40, 253),
+    "pink": (255, 113, 226),
+    "cyan": (76, 224, 172),
     "white": (225, 225, 225),
 }
 WIRE_PATTERNS = ("solid", "striped")
@@ -268,7 +284,7 @@ class WirePuzzle(Puzzle):
 
     def __init__(self):
         super().__init__()
-        n = random.randint(4, 5)
+        n = 6
         combos = [(c, p) for c in WIRE_COLORS for p in WIRE_PATTERNS]
         self.wires = random.sample(combos, n)        # left-hand order, top to bottom
         self.target, self.rules = generate_wire_rules(n)
@@ -430,9 +446,8 @@ class WirePuzzle(Puzzle):
 
     @staticmethod
     def manual_general():
-        return [("text", "Drag each wire on the left to one input on the right. "
-                         "Every wire must be connected. \"Above\" and \"next to\" refer to "
-                         "the inputs. Not every wire has a rule - deduce the rest.")]
+        return [("text", "Connect every wire to an input. Positions refer to the inputs. "
+                         "Some wires have no rule.")]
 
 
 # ---- 2. Tango (binary logic grid with = / x clues) ---------------------------
@@ -645,141 +660,16 @@ class TangoPuzzle(Puzzle):
 
     @staticmethod
     def manual_general():
-        return [("text", "Fill the grid with circles and squares. Every row and column holds "
-                         "3 of each. No more than 2 of the same symbol may sit next to each "
-                         "other in a row or column. Cells joined by = match; cells joined by x "
-                         "differ. Dark cells are fixed. Reset clears your entries.")]
+        return [("text", "3 circles and 3 squares per row and column, never 3 alike in a "
+                         "row. = means same, x means different.")]
 
 
 # ---- 3. Word memory ------------------------------------------------------------
-WORD_POOL_TEXT = """
-absent abroad absorb academy accent accept access account accuse achieve acquire across
-action active actual adapt adjust admire admit adopt adult advance advice affair afford
-afraid agency agenda airline airport alarm album alert alien alive allow almost alone
-along alpha already altar amazing amber amount amuse anchor ancient anger angle angry
-animal ankle annual answer anxiety anybody apart apology appeal appear apple apply approve
-arena argue arise armchair armor around arrange arrest arrive arrow artist ashamed aside
-asleep assist assume attach attack attempt attend attic attract auction audio author
-autumn avenue avoid awake award aware awful backpack bacon badge balance balcony ballet
-balloon bamboo banana bandage banjo banner barber bargain barrel basic basket battery
-battle beach beacon beard beast beauty become bedroom beetle before begin behave behind
-being belief bellow belong below bench beneath berry beside better beyond bicycle billion
-biology biscuit bishop bitter blanket blast blend blind blink block blossom blouse board
-boast bonus border borrow bottle bottom bounce boxer brain branch brave bread breeze brick
-bride bridge brief bright bring broad broken bronze brook brother brown brush bubble bucket
-budget buffalo build bullet bundle burden bureau burger butter button buyer cabbage cabin
-cable cactus camel camera candle candy canoe canvas canyon carbon career cargo carpet
-carrot carry cartoon castle casual catalog cattle cause cavern ceiling celery cellar
-cement census center cereal certain chain chair chalk chamber champion change channel
-chapter charge charm chase cheap check cheek cheese cherry chess chest chicken chief child
-chimney choice choose chorus chrome church cinema circle circus citizen civil claim
-clarify class classic clean clear clerk clever cliff climate climb clinic clock close
-closet cloth cloud clover coach coast cobweb coconut coffee collar collect college colony
-color column combine comedy comfort comic command comment common company compass complex
-concert conduct confirm connect consist contact content contest context control convert
-cookie copper coral corner correct cotton couch cough council count country county couple
-courage course cousin cover coyote crack cradle craft crane crash crater crayon cream
-create credit creek cricket crime crisp critic crowd crown cruise crumb crush crystal
-cuckoo culture cupboard curious current curtain cushion custom cycle dagger daily dairy
-damage dance danger daring debate debris decade decide declare decline decorate deeply
-defeat defend define degree delay delight deliver demand dentist depart depend deposit
-depth deputy derive desert design desire detail detect develop device devote diamond diary
-diesel differ digital dinner dinosaur direct dirty discover disease display distant divide
-doctor dolphin domain donkey double dough dozen draft dragon drama drawer dream dress drift
-drink drive driver drizzle during dwarf dynamic eager eagle early earth easily eastern
-economy edition editor effect effort eight either elbow elder elect elegant element
-elephant elevator eleven elite email embark embrace emerge emotion empire employ empty
-enable enact endless endorse enemy energy engage engine enhance enjoy enormous enough
-enrich ensure enter entire entry envelope episode equal equator erase erode errand error
-escape essay estate eternal ethics evening event evident evolve exact example excess
-exchange excite exclude excuse execute exercise exhaust exhibit exile exist exotic expand
-expect expert explain explode explore export expose express extend extra eyebrow fabric
-factor factory faint fairy faith falcon family famous fancy fantasy farmer fashion father
-faucet fault favor feather feature fellow fence ferry festival fever fiber fiction field
-fierce fifteen fight figure final finger finish flame flavor fleet flight float flock
-floor flower fluid flute focus folder follow forest forget formal format former fortune
-forward fossil fountain fragile frame freedom freeze freight fresh friend fringe frost
-frozen fruit fudge funnel furnace future gadget galaxy gallery gallon gamble garage garden
-garlic garment gather gauge gazelle general genius gentle genuine gesture ghost giant
-ginger giraffe glacier glance glass glide glimpse global gloomy glory glove goblin golden
-gospel gossip govern grace grade grain grammar grand granite grape graph grass gravel
-gravity great greedy green greet grief grill grocery ground group growth guard guess guest
-guide guitar gutter habit hammer hamster handle happen harbor hardly harmony harvest hatch
-haunt hazard header health heart heater heaven heavy hedge height helmet helpful herald
-herbal hidden highway hiking history hobby hockey holiday hollow honest honey hoodie
-horizon horror horse hospital hostile hotel humble humor hundred hunger hunter hurdle
-hurry husband hybrid iceberg ideal identify ignore illegal illness image imagine impact
-import impose improve impulse incense include income index indoor infant inform inherit
-initial injury inland inner innocent input inquiry insect inside insist inspire install
-instant intact intend invest invite island isolate issue ivory jacket jaguar jasmine
-jealous jelly jersey jewel jigsaw jockey journey judge juggle juice jumble jungle junior
-justice kayak kernel kettle keyboard kidney kingdom kitchen kitten knife knight knock
-label labor ladder ladle lagoon lantern laptop large laser latch later laugh launch
-laundry lawyer layer leader league learn leather lecture legend lemon length leopard
-lesson letter lettuce level liberty library license light limit linen liquid listen
-little lively lizard lobby lobster local locker lodge logic lonely lottery lounge loyal
-lucky luggage lumber lunar lunch luxury lyrics machine magic magnet maiden mailbox major
-mammal manage mango manner mantle manual maple marble margin marine market marriage marsh
-mascot master match matter meadow measure medal medium melody melon member memory mental
-mentor merchant mercy merit message metal method middle midnight mighty million mimic
-mineral minor minute miracle mirror mischief missile mission mistake mixture mobile model
-modern modest moment monitor monkey monster month morning mosaic mosquito mother motion
-motor mountain mouse mouth muffin multiply muscle museum mushroom music mustard mutual
-mystery napkin narrow nation native nature nearby nectar needle neglect neither nephew
-nerve network neutral never newborn noble nobody noise normal north notable nothing notice
-novel number nurse nutmeg oasis object oblige obscure observe obtain obvious occur ocean
-offend office often olive omelet onion online opera opinion oppose option orange orbit
-orchard order organ origin orphan ostrich outcome outdoor outer output outside overall
-owner oxygen oyster package paddle palace panda panel panic panther paper parade parent
-parrot partner party passage passion pasta pastel patch patience patrol pattern pause
-peace peach peanut pearl pebble pelican penalty pencil people pepper perfect perform
-permit person phone photo phrase physics piano picnic picture piece pigeon pillow pilot
-pinch pioneer pirate pistol pitch pizza planet plastic plate player please pledge plenty
-pocket poetry point polar police polish pollen popcorn popular portion position potato
-pottery powder power prairie praise predict prefer prepare present pretty prevent price
-pride primary prince print priority prison private prize problem process produce profit
-program project promise proof proper protect proud provide public pudding pulse pumpkin
-punch pupil puppet puppy purple purpose puzzle pyramid quality quarter queen query quest
-quick quiet quilt quote rabbit raccoon radar radio railway rainbow raise rally random
-range rapid rascal rather raven razor reach react reader ready realm reason rebel recall
-receipt recipe record recover reduce reflect reform refuse region regret reject relax
-relief remain remedy remind remote remove render rental repair repeat replace report
-rescue resist resort result retire return reveal review reward rhythm ribbon rider ridge
-rifle right rigid river roast robot rocket rodeo roller rookie rotate rough round route
-royal rubber rumor runway rural rustic saddle safari safety sailor salad salmon salute
-sample sandal satisfy saucer sausage scale scatter scene scheme school science scissors
-scooter score scout scrap scream screen script sculpt season second secret section secure
-select seminar senior sense series serve session settle seven shadow shallow shampoo shape
-share shark sharp shelf shell shelter sheriff shield shift shine shiver shock shoulder
-shovel shower shrimp shuffle signal silent silver simple siren sister skate sketch skill
-slender slice slogan smart smile smoke snack snake sneeze soccer social socket soldier
-solid solution sorrow sound source space spark speaker special speech spider spinach
-spirit splash sponge spoon sport spray spring sprout square squash squirrel stable stadium
-staff stage stairs stamp stand staple start station statue steady steam steel stereo
-stick still stingy stitch stock stomach stone storm story stove strange straw stream
-street strike string strong student studio stumble style subject submit subway sudden
-sugar summer summit sunset supply supreme surface surgeon surprise survey suspect swallow
-swamp sweater sweet swift swing switch sword symbol symptom syrup system table tablet
-tackle tactic talent target teacher temple tenant tennis tension terrain theater theory
-thing thirst thought thread threat thrive throat thumb thunder ticket tiger timber tissue
-title toast tobacco today toddler toilet tomato tongue tonight topic tornado tortoise
-total tourist towel tower track trade traffic tragic trail train transfer travel treasure
-treaty trend trial tribe trick trigger trophy tropical trouble truck trumpet trust truth
-tunnel turkey turtle twelve twenty twice twist typical umbrella unable uncle uncover under
-unfair unfold uniform unique universe unknown unlock until unusual update upgrade uphold
-upper upset urban usage useful usual utility vacant vacuum valley valve vanish vapor
-various vault vehicle velvet vendor venture venue verbal verdict version vessel veteran
-viable vibrant victory video village vintage violin virtual virus visible visit visual
-vital vivid vocal volcano voyage wagon waiter walnut wander warfare warrior wealth weapon
-weasel weather wedding weekend weird welcome western whale wheat wheel whisper whistle
-widget width window winter wisdom witness wizard woman wonder wooden worker worry worth
-wrangle wreck wrestle wrist writer yacht yellow yesterday yogurt young youth zebra zigzag
-zipper
-"""
-WORD_POOL = sorted({w for w in WORD_POOL_TEXT.split() if 5 <= len(w) <= 10 and w.isalpha()})
-WORD_COUNT = 20
+with open('bomb-defusal-words.txt', 'r') as file:
+    WORD_POOL = file.read().split()
+WORD_COUNT = 25
 WORD_SLOT_MS = 1000 // 3        # 3 words per second
-WORD_SHOW_MS = 270              # visible part of each slot; the rest is a blank gap
+WORD_SHOW_MS = 250              # visible part of each slot; the rest is a blank gap
 
 
 def generate_word_sequence():
@@ -886,44 +776,53 @@ class WordMemoryPuzzle(Puzzle):
 
     @staticmethod
     def manual_general():
-        return [("text", "Press Play and watch 20 words flash past. Exactly one "
-                         "word appears twice; type it and press Enter. A wrong answer costs "
-                         "5 seconds and deals a new set of words.")]
+        return [("text", f"Type the one word that appears twice in {WORD_COUNT}. "
+                         "Wrong: -5 s.")]
 
 
 # ---- 4. Blue light -------------------------------------------------------------
-BLUE_FLASHES = 3                # flashes per cycle
+BLUE_FLASHES = 3                # blue flashes per cycle
+BLUE_DECOYS = 1                 # purple flashes per cycle, mixed in among the blue ones
 BLUE_ON_MS = 1000
 BLUE_GAP_MS = (5000, 20000)
 BLUE_CYCLE_PENALTY_MS = 10_000  # lost when a whole cycle passes without a catch
+DECOY_PENALTY_MS = 15_000       # lost for clicking a purple flash
+DECOY_RED_MS = 800              # a clicked purple flash shows red at least this long
 LAMP_OFF = (30, 32, 40)
 LAMP_BLUE = (60, 140, 255)
+LAMP_PURPLE = (120, 105, 255)   # close to blue on purpose
+LAMP_RED = (235, 60, 50)
 
 
 class BlueLightPuzzle(Puzzle):
     """Runs from the start of the round: one click while the light is blue solves it.
 
-    The light flashes in cycles of BLUE_FLASHES. Each cycle's timing is fixed when
-    it starts. If a whole cycle passes uncaught, BLUE_CYCLE_PENALTY_MS is lost and
-    a fresh cycle begins, until the timer runs out. Clicking while it is not
-    blue costs PENALTY_MS.
+    The light flashes in cycles: BLUE_FLASHES blue flashes plus BLUE_DECOYS purple
+    ones in random positions. Each cycle's timing is fixed when it starts. If a
+    cycle ends with no blue caught, BLUE_CYCLE_PENALTY_MS is lost and a fresh cycle
+    begins, until the timer runs out. Clicking a purple flash turns it red and costs
+    DECOY_PENALTY_MS; clicking while the light is dark costs PENALTY_MS.
     """
     title = "Blue light"
 
     def __init__(self):
         super().__init__()
+        self.red_until = 0
         self.new_cycle(pygame.time.get_ticks())
 
     def new_cycle(self, t):
-        # A 5-20 s gap before each 1 s flash.
+        # A 5-20 s gap before each 1 s flash; flashes are (on, off, colour).
+        kinds = ["blue"] * BLUE_FLASHES + ["purple"] * BLUE_DECOYS
+        random.shuffle(kinds)
         self.flashes = []
-        for _ in range(BLUE_FLASHES):
+        for kind in kinds:
             t += random.randint(*BLUE_GAP_MS)
-            self.flashes.append((t, t + BLUE_ON_MS))
+            self.flashes.append((t, t + BLUE_ON_MS, kind))
             t += BLUE_ON_MS
+        self.burned = set()                     # purple flashes already clicked
 
     def current(self, now):
-        for i, (on, off) in enumerate(self.flashes):
+        for i, (on, off, _) in enumerate(self.flashes):
             if on <= now < off:
                 return i
         return None
@@ -936,10 +835,16 @@ class BlueLightPuzzle(Puzzle):
     def press(self):
         if self.solved:
             return
-        if self.current(pygame.time.get_ticks()) is not None:
-            self.mark_solved()
-        else:
+        now = pygame.time.get_ticks()
+        i = self.current(now)
+        if i is None:
             self.penalty_ms += PENALTY_MS
+        elif self.flashes[i][2] == "blue":
+            self.mark_solved()
+        elif i not in self.burned:                  # purple: punished once per flash
+            self.burned.add(i)
+            self.penalty_ms += DECOY_PENALTY_MS
+            self.red_until = max(self.flashes[i][1], now + DECOY_RED_MS)
 
     def on_mouse_down(self, pos, rect, button):
         if button != 1 or not rect.collidepoint(pos):
@@ -948,10 +853,15 @@ class BlueLightPuzzle(Puzzle):
         return True
 
     def draw_lamp(self, surface, center, radius):
-        i = None if self.solved else self.current(pygame.time.get_ticks())
-        if i is not None:
-            pygame.draw.circle(surface, (40, 80, 160), center, radius * 1.25)
-            color = LAMP_BLUE
+        now = pygame.time.get_ticks()
+        i = None if self.solved else self.current(now)
+        if not self.solved and now < self.red_until:
+            pygame.draw.circle(surface, (120, 35, 30), center, radius * 1.25)
+            color = LAMP_RED
+        elif i is not None:
+            glow, color = (((40, 80, 160), LAMP_BLUE) if self.flashes[i][2] == "blue"
+                           else ((70, 60, 160), LAMP_PURPLE))
+            pygame.draw.circle(surface, glow, center, radius * 1.25)
         elif self.solved:
             color = TILE_ON
         else:
@@ -967,11 +877,8 @@ class BlueLightPuzzle(Puzzle):
 
     @staticmethod
     def manual_general():
-        return [("text", "Every so often it turns blue for 1 second. Click it once "
-                         "while it is blue to solve it. Clicking it while it is not blue costs "
-                         "5 seconds. Every 3 blue flashes that pass without a click cost 10 "
-                         "seconds. If the light is off screen or this book is open, a copy "
-                         "shows in the top-right corner and can be clicked there.")]
+        return [("text", "Click it while blue. Clicking when dark: -5 s. Clicking purple: "
+                         "-15 s. Every 3 missed blue flashes: -10 s.")]
 
 
 # ---- 5. Lights -----------------------------------------------------------------
@@ -1039,13 +946,14 @@ class LightsPuzzle(Puzzle):
 
     @staticmethod
     def manual_general():
-        return [("text", "Clicking a square flips it and the (up to) four squares touching its "
-                         "sides, on to off and off to on. Turn every light off.")]
+        return [("text", "A click flips a light and its side neighbours. Turn all off.")]
 
 
 # ---- 6. Trades -----------------------------------------------------------------
-SHAPES = ("circle", "triangle", "square")
-SHAPE_COLORS = {"circle": (240, 150, 50), "triangle": (90, 200, 120), "square": (70, 140, 230)}
+SHAPES = ("circle", "triangle", "square", "pentagon")
+SHAPE_COLORS = {"circle": (240, 150, 50), "triangle": (90, 200, 120), "square": (70, 140, 230),
+                "pentagon": (195, 110, 225)}
+TRADE_USES = (2, 4)             # each trade is needed this many times in the (unique) solution
 INV_COLS, INV_ROWS = 6, 3
 MAX_STACK = 16
 TRADE_SLOT = (28, 30, 38)
@@ -1060,6 +968,10 @@ def draw_shape(surface, kind, center, size):
         pygame.draw.circle(surface, color, center, h)
     elif kind == "triangle":
         pygame.draw.polygon(surface, color, [(x, y - h), (x + h, y + h * 0.8), (x - h, y + h * 0.8)])
+    elif kind == "pentagon":
+        pygame.draw.polygon(surface, color, [(x + h * math.sin(i * 2 * math.pi / 5),
+                                              y - h * math.cos(i * 2 * math.pi / 5) + h * 0.1)
+                                             for i in range(5)])
     else:
         pygame.draw.rect(surface, color, (x - h * 0.85, y - h * 0.85, h * 1.7, h * 1.7),
                          border_radius=max(1, int(size * 0.08)))
@@ -1073,24 +985,25 @@ def apply_trade(state, rules, src):
     return state
 
 
-def min_trades(start, target, rules, cap=60, max_depth=20):
-    """Fewest trades from start to target (BFS), or None if unreachable within the caps."""
-    key = lambda st: tuple(st[k] for k in SHAPES)
-    goal = key(target)
-    frontier, seen = [start], {key(start)}
-    for depth in range(max_depth + 1):
-        nxt = []
-        for st in frontier:
-            if key(st) == goal:
-                return depth
-            for src, (dst, a, b) in rules.items():
-                if st[src] >= a and st[dst] + b <= cap:
-                    new = apply_trade(st, rules, src)
-                    if key(new) not in seen:
-                        seen.add(key(new))
-                        nxt.append(new)
-        frontier = nxt
-    return None
+def can_order(start, rules, uses):
+    """True if every trade can be made uses[src] times in some order without ever
+    running short of the shape it costs."""
+    seen = set()
+
+    def dfs(state, left):
+        key = tuple(left[k] for k in SHAPES)
+        if not any(key):
+            return True
+        if key in seen:
+            return False
+        seen.add(key)
+        for src, (_, a, _) in rules.items():
+            if left[src] and state[src] >= a:
+                if dfs(apply_trade(state, rules, src), {**left, src: left[src] - 1}):
+                    return True
+        return False
+
+    return dfs(dict(start), dict(uses))
 
 
 def has_gain_cycle(rules):
@@ -1111,30 +1024,32 @@ def has_gain_cycle(rules):
 
 
 def generate_trades():
-    """Start counts, one-way rates (at most one per source shape), and a target that is
-    reached from the start by a random series of legal trades (so it is solvable)."""
+    """Start counts, one trade per shape, and a target.
+
+    Every shape trades into a different shape, so each shape is also produced by
+    exactly one trade. No loop of trades may gain shapes, which makes the trade
+    rates an invertible system: the target fixes exactly how many times each trade
+    must be made. Those counts are picked first (TRADE_USES each), so every
+    solution uses every trade several times, and an order that never runs short
+    is checked to exist.
+    """
     while True:
-        start = {k: random.randint(2, 12) for k in SHAPES}
-        rules = {}
-        for src in SHAPES:
-            if random.random() < 0.85:
-                a, b = random.sample(range(1, 5), 2)
-                rules[src] = (random.choice([k for k in SHAPES if k != src]), a, b)
-        if len(rules) < 2 or has_gain_cycle(rules):
+        outputs = random.sample(SHAPES, len(SHAPES))
+        if any(src == dst for src, dst in zip(SHAPES, outputs)):
             continue
-        state, made = dict(start), 0
-        wanted = random.randint(3, 7)
-        while made < wanted:
-            usable = [src for src, (_, a, _) in rules.items() if state[src] >= a]
-            if not usable:
-                break
-            state = apply_trade(state, rules, random.choice(usable))
-            made += 1
-        if made < 3 or max(state.values()) > 40:
+        rules = {src: (dst, *random.sample(range(1, 5), 2)) for src, dst in zip(SHAPES, outputs)}
+        if has_gain_cycle(rules):
             continue
-        depth = min_trades(start, state, rules)
-        if depth is not None and depth >= 3:
-            return start, state, rules
+        uses = {k: random.randint(*TRADE_USES) for k in SHAPES}
+        start = {k: random.randint(3, 14) for k in SHAPES}
+        target = dict(start)
+        for src, (dst, a, b) in rules.items():
+            target[src] -= a * uses[src]
+            target[dst] += b * uses[src]
+        if min(target.values()) < 0 or max(target.values()) > 40:
+            continue
+        if can_order(start, rules, uses):
+            return start, target, rules
 
 
 class TradePuzzle(Puzzle):
@@ -1339,18 +1254,19 @@ class TradePuzzle(Puzzle):
         # Goal row: owned / goal for each shape.
         owned = self.owned()
         label = fonts["main"].render("Goal", True, DIM)
-        total_w = label.get_width() + 3 * 150 * s
+        step = 128 * s
+        total_w = label.get_width() + 24 * s + len(SHAPES) * step
         x = rect.centerx - total_w / 2
         y = rect.y + 100 * s
         surface.blit(label, label.get_rect(midleft=(x, y)))
-        x += label.get_width() + 30 * s
+        x += label.get_width() + 24 * s
         for kind in SHAPES:
-            draw_shape(surface, kind, (x + 14 * s, y), 30 * s)
+            draw_shape(surface, kind, (x + 13 * s, y), 28 * s)
             done = owned[kind] == self.target[kind]
-            img = fonts["main"].render(f"{owned[kind]} / {self.target[kind]}", True,
-                                       TIMER_DONE if done else TEXT)
-            surface.blit(img, img.get_rect(midleft=(x + 38 * s, y)))
-            x += 150 * s
+            img = fonts["small"].render(f"{owned[kind]} / {self.target[kind]}", True,
+                                        TIMER_DONE if done else TEXT)
+            surface.blit(img, img.get_rect(midleft=(x + 34 * s, y)))
+            x += step
 
         rects = self.slot_rects(rect)
         # Trade row: input -> output.
@@ -1389,18 +1305,13 @@ class TradePuzzle(Puzzle):
 
     @staticmethod
     def manual_general():
-        return [("text", "Trade shapes until you own exactly the goal amounts, with everything "
-                         "back in the inventory. Put shapes in the In box; if they pay for a "
-                         "trade below, the Out box shows what you get. Trades only go one way. "
-                         "Left-click picks up or places a stack (or drag it). Right-click picks "
-                         "up half a stack, or places one shape. Shift-click moves a stack "
-                         "between inventory and In. Click Out to take one trade; shift-click "
-                         "Out to take as many as fit. Reset restores the starting shapes.")]
+        return [("text", "Reach the goal with everything in the inventory. Right-click "
+                         "splits, shift-click moves a whole stack.")]
 
 
 # ---- 7. Instructions -----------------------------------------------------------
 INSTR_N = 3
-INSTR_COUNT = 10                # including the START line
+INSTR_COUNT = 19                # including the START line (step 1)
 INSTR_STARTS = {"TOP LEFT": (0, 0), "TOP RIGHT": (0, INSTR_N - 1),
                 "BOTTOM LEFT": (INSTR_N - 1, 0), "BOTTOM RIGHT": (INSTR_N - 1, INSTR_N - 1),
                 "CENTER": (INSTR_N // 2, INSTR_N // 2)}
@@ -1410,34 +1321,50 @@ INSTR_ON = (235, 90, 80)
 INSTR_OFF = (45, 48, 58)
 
 
-def generate_instructions():
-    """START line plus moves/toggles that never leave the grid. Returns the
-    instruction text and the set of cells left on after following them all."""
-    def inside(r, c):
-        return 0 <= r < INSTR_N and 0 <= c < INSTR_N
-
-    while True:
-        name = random.choice(list(INSTR_STARTS))
-        r, c = INSTR_STARTS[name]
-        lines, on, moves = [f"START at {name}"], set(), 0
-        while len(lines) < INSTR_COUNT:
-            kind = random.choices(("move", "here", "near"), weights=(45, 25, 30))[0]
-            if kind == "here":
-                on ^= {(r, c)}
-                lines.append("TOGGLE CURRENT")
-                continue
-            table = INSTR_MOVES if kind == "move" else INSTR_TOGGLES
-            word, (dr, dc) = random.choice([(w, d) for w, d in table.items()
-                                            if inside(r + d[0], c + d[1])])
-            if kind == "move":
+def trace_instructions(start, steps):
+    """Grid state (frozenset of lit cells) before any step and after each one,
+    or None if a step moves or toggles off the grid."""
+    r, c = start
+    on, states = set(), [frozenset()]
+    for verb, where in steps:
+        if where == "CURRENT":
+            on ^= {(r, c)}
+        else:
+            dr, dc = (INSTR_MOVES if verb == "MOVE" else INSTR_TOGGLES)[where]
+            if not (0 <= r + dr < INSTR_N and 0 <= c + dc < INSTR_N):
+                return None
+            if verb == "MOVE":
                 r, c = r + dr, c + dc
-                moves += 1
-                lines.append(f"MOVE {word}")
             else:
                 on ^= {(r + dr, c + dc)}
-                lines.append(f"TOGGLE {word}")
-        if len(on) >= 3 and moves >= 3:
-            return lines, on
+        states.append(frozenset(on))
+    return states
+
+
+def generate_instructions():
+    """START line plus INSTR_COUNT - 1 steps in a random order. Returns the text
+    and the set of cells left on at the end.
+
+    A random set of steps is shuffled until an order stays on the grid. The end
+    pattern must differ from the grid after every earlier step (and from the empty
+    start), so stopping partway through never already matches the answer.
+    """
+    kinds = [("MOVE", w) for w in INSTR_MOVES] + [("TOGGLE", w) for w in INSTR_TOGGLES]
+    while True:
+        name = random.choice(list(INSTR_STARTS))
+        steps = [("TOGGLE", "CURRENT") if random.random() < 0.25 else random.choice(kinds)
+                 for _ in range(INSTR_COUNT - 1)]
+        if sum(verb == "MOVE" for verb, _ in steps) < 3:
+            continue
+        for _ in range(60):
+            random.shuffle(steps)
+            states = trace_instructions(INSTR_STARTS[name], steps)
+            if states is None:
+                continue
+            final = states[-1]
+            if len(final) >= 3 and final not in states[:-1]:
+                lines = [f"START at {name}"] + [f"{verb} {where}" for verb, where in steps]
+                return lines, set(final)
 
 
 class InstructionPuzzle(Puzzle):
@@ -1447,6 +1374,8 @@ class InstructionPuzzle(Puzzle):
     def __init__(self):
         super().__init__()
         self.lines, self.answer = generate_instructions()
+        # The manual lists steps 2.. in this scrambled order, each keeping its number.
+        self.shown_order = random.sample(range(len(self.lines) - 1), len(self.lines) - 1)
         self.on = set()
 
     def cell_rect(self, rect, r, c):
@@ -1493,15 +1422,21 @@ class InstructionPuzzle(Puzzle):
             draw_status(surface, rect, fonts, "Click tiles to match the instructions", DIM)
 
     def manual(self, position):
-        return [("rule", line) for line in self.lines]
+        # Each step becomes (label, arrow direction or None); the book draws the arrow.
+        arrows = {"UP": "up", "DOWN": "down", "LEFT": "left", "RIGHT": "right",
+                  "ABOVE": "up", "BELOW": "down"}
+        steps = []
+        for i, line in enumerate(self.lines[1:], 2):
+            verb, where = line.split(" ", 1)
+            if where == "CURRENT":
+                steps.append((f"{i}.  {verb} HERE", None))
+            else:
+                steps.append((f"{i}.  {verb}", arrows[where]))
+        return [("text", f"1.  {self.lines[0]}"), ("cells", [steps[i] for i in self.shown_order])]
 
     @staticmethod
     def manual_general():
-        return [("text", "All tiles start off; click a tile to toggle it. Follow the steps "
-                         "below from the START tile: MOVE shifts your position one tile, "
-                         "TOGGLE CURRENT flips the tile you are on, and TOGGLE ABOVE / BELOW / "
-                         "LEFT / RIGHT flips the neighbouring tile without moving. Only the "
-                         "final pattern is checked.")]
+        return [("text", "Click tiles to match the final pattern.")]
 
 
 # ---- 8. Balance (metronome) ----------------------------------------------------
@@ -1510,7 +1445,7 @@ MET_GRAVITY = 1.6               # angular accel = MET_GRAVITY * sin(angle): tips
 MET_DAMPING = 0.3               # per second
 MET_IMPULSE = 0.9               # rad/s added per button press
 MET_ZONE_HALF = 0.26            # half-width of the green zone, rad
-MET_HOLD_S = 3.0                # consecutive seconds in the zone to solve
+MET_HOLD_S = 4.0                # consecutive seconds in the zone to solve
 MET_GRACE_S = 0.2               # time outside the zone that doesn't break the streak
 MET_STEP_S = 1 / 240            # physics substep
 MET_BUTTON_RANGE = (0.2, 0.85)  # button heights, as a fraction of the module height
@@ -1640,10 +1575,7 @@ class MetronomePuzzle(Puzzle):
 
     @staticmethod
     def manual_general():
-        return [("text", "The arm falls harder the further it leans. The left and right buttons "
-                         "each push it that way, then jump to a new height. Keep the arm in the "
-                         "moving green zone for 3 seconds in a row; slipping out for under 0.2 s "
-                         "is forgiven. The arm turns greener as you get closer.")]
+        return [("text", "Keep the arm in the green for 3 seconds.")]
 
 
 PUZZLE_POOL = [WirePuzzle, TangoPuzzle, WordMemoryPuzzle, BlueLightPuzzle,
@@ -1984,10 +1916,8 @@ class Game:
 
         # One section per module on this bomb (switches share one), in tile order.
         sections = [[("heading", "How to defuse"),
-                     ("text", "Solve every module before the timer reaches zero. All modules "
-                              "work at any zoom: scroll to zoom in, drag empty space or "
-                              "right-drag to pan. The timer keeps running while this book is "
-                              "open.")]]
+                     ("text", "Solve every module before time runs out. Scroll to zoom, "
+                              "drag to pan.")]]
         has_switch = False
         for i, p in enumerate(self.puzzles):
             if isinstance(p, SwitchPuzzle):
@@ -2030,6 +1960,20 @@ class Game:
                     s.blit(heading.render(text, True, BOOK_ACCENT), (x, y))
                 y += heading.get_linesize() + 2
                 rule_no = 0
+                continue
+            if kind == "cells":                      # short (label, arrow) items, three to a row
+                for i, (label, arrow) in enumerate(text):
+                    if not measure:
+                        img = body.render(label, True, BOOK_INK)
+                        cx = x + (i % 3) * width / 3
+                        s.blit(img, (cx, y))
+                        if arrow:
+                            draw_arrow(s, (cx + img.get_width() + body.get_height() * 0.7,
+                                           y + body.get_height() * 0.52), body.get_height() * 0.85,
+                                       arrow, BOOK_INK)
+                    if i % 3 == 2 or i == len(text) - 1:
+                        y += body.get_linesize() + 3
+                y += 6
                 continue
             indent = 0
             if kind == "rule":
